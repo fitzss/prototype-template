@@ -65,10 +65,10 @@ while IFS= read -r line; do
   [ -z "$trimmed" ] && continue
 
   echo "Running: $trimmed"
+  command_count=$((command_count + 1))
   if [ "$DRY_RUN" -eq 1 ]; then
     continue
   fi
-  command_count=$((command_count + 1))
   if ! bash -lc "$trimmed"; then
     echo "Acceptance check failed: $trimmed" >&2
     STATUS=1
