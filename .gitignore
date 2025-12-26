@@ -1,0 +1,9 @@
+.env
+SPEC.md
+FAILURE.md
+.ai/
+node_modules/
+dist/
+build/
+target/
+.DS_Store
