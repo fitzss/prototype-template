@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: help up reset lint test demo acceptance
+.PHONY: help up reset lint test demo preflight acceptance
 
 help:
 	@echo "Available targets:"
@@ -27,7 +27,10 @@ test:
 demo:
 	@echo "Demo placeholder: use 'docker-compose run --rm app <demo-command>' to showcase the app."
 
-acceptance:
+preflight:
+	./tools/ai/preflight.sh
+
+acceptance: preflight
 	@if [ -f SPEC.md ]; then \
 		if [ -x ./tools/ai/run_acceptance.sh ]; then \
 			./tools/ai/run_acceptance.sh SPEC.md; \
