@@ -63,6 +63,18 @@ make acceptance
 ./tools/ai/run_acceptance.sh SPEC.md
 \`\`\`
 
+### Acceptance directives
+Inside each acceptance code block you can add directive lines starting with `#@` to control execution. Everything is deterministic by default, but flaky commands can opt into retries, timeouts, exit-code overrides, and regex assertions:
+
+```bash
+#@ flaky retries=5 timeout=60 allow_exit_codes=0,124 allow_output_regex=READY
+./scripts/run_flaky.sh
+#@ deterministic
+make lint
+```
+
+`run_acceptance.sh` keeps using the latest directive until another `#@` line appears, so you can mix deterministic and flaky commands in the same block.
+
 ## Safety: Git guardrail
 `tools/ai/build_from_spec.sh` refuses to run if there are uncommitted changes. This prevents AI automation from overwriting work you haven’t checkpointed.
 
