@@ -1,0 +1,136 @@
+Running: cat docker-compose.yml
+version: '3.9'
+services:
+  app:
+    image: busybox:latest
+    command: ["sh", "-c", "echo 'App service placeholder running'; sleep 3600"]
+    tty: true
+Running: cat Makefile
+SHELL := /bin/bash
+
+.PHONY: help up reset lint test demo preflight acceptance report report-spec
+
+help:
+	@echo "Available targets:"
+	@echo "  make up          # start local dev environment"
+	@echo "  make reset       # reset local dev environment"
+	@echo "  make lint        # run lint checks (placeholder)"
+	@echo "  make test        # run tests (placeholder)"
+	@echo "  make demo        # run demo (placeholder)"
+	@echo "  make acceptance  # run acceptance checks from SPEC.md"
+	@echo "  make report      # generate a timestamped acceptance report"
+	@echo "  make report-spec # generate a report for SPEC=<path>"
+
+up:
+	docker-compose up -d
+
+reset:
+	docker-compose down -v --rmi all || true
+	docker-compose up -d --build
+
+lint:
+	@echo "Lint placeholder: configure project-specific lint command and update Makefile."
+
+test:
+	@echo "Test placeholder: use 'docker-compose run --rm app <test-command>' to run your suite."
+
+demo:
+	@echo "Demo placeholder: use 'docker-compose run --rm app <demo-command>' to showcase the app."
+
+preflight:
+	./tools/ai/preflight.sh
+
+acceptance: preflight
+	@if [ -f SPEC.md ]; then \
+		if [ -x ./tools/ai/run_acceptance.sh ]; then \
+			./tools/ai/run_acceptance.sh SPEC.md; \
+		else \
+			echo "tools/ai/run_acceptance.sh is missing or not executable" && exit 1; \
+		fi; \
+	else \
+		echo "SPEC.md not found; run ./tools/ai/plan.sh first."; \
+	fi
+
+report:
+	./tools/ai/build_report.sh SPEC.md
+
+report-spec:
+	@if [ -z "$(SPEC)" ]; then \
+		echo "Usage: make report-spec SPEC=<spec-path>"; \
+		exit 1; \
+	fi
+	./tools/ai/build_report.sh "$(SPEC)"
+Running: make up
+make[1]: Entering directory '/home/fitz/prototype-template'
+docker-compose up -d
+time="2025-12-27T02:42:33-05:00" level=warning msg="/home/fitz/prototype-template/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion"
+ Network prototype-template_default  Creating
+ Network prototype-template_default  Created
+ Container prototype-template-app-1  Creating
+ Container prototype-template-app-1  Created
+ Container prototype-template-app-1  Starting
+ Container prototype-template-app-1  Started
+make[1]: Leaving directory '/home/fitz/prototype-template'
+Running: docker-compose ps
+time="2025-12-27T02:42:34-05:00" level=warning msg="/home/fitz/prototype-template/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion"
+NAME                       IMAGE            COMMAND                  SERVICE   CREATED        STATUS                  PORTS
+prototype-template-app-1   busybox:latest   "sh -c 'echo 'App se…"   app       1 second ago   Up Less than a second   
+Running: make reset
+make[1]: Entering directory '/home/fitz/prototype-template'
+docker-compose down -v --rmi all || true
+time="2025-12-27T02:42:35-05:00" level=warning msg="/home/fitz/prototype-template/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion"
+ Container prototype-template-app-1  Stopping
+ Container prototype-template-app-1  Stopped
+ Container prototype-template-app-1  Removing
+ Container prototype-template-app-1  Removed
+ Image busybox:latest  Removing
+ Network prototype-template_default  Removing
+ Image busybox:latest  Removed
+ Network prototype-template_default  Removed
+docker-compose up -d --build
+time="2025-12-27T02:42:46-05:00" level=warning msg="/home/fitz/prototype-template/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion"
+ app Pulling 
+ e59838ecfec5 Pulling fs layer 
+ e59838ecfec5 Downloading [>                                                  ]  23.27kB/2.214MB
+ e59838ecfec5 Downloading [=>                                                 ]  71.68kB/2.214MB
+ e59838ecfec5 Downloading [======================>                            ]  978.9kB/2.214MB
+ e59838ecfec5 Downloading [===============================>                   ]  1.405MB/2.214MB
+ e59838ecfec5 Downloading [===================================>               ]  1.561MB/2.214MB
+ e59838ecfec5 Downloading [====================================>              ]  1.626MB/2.214MB
+ e59838ecfec5 Downloading [==================================================>]  2.214MB/2.214MB
+ e59838ecfec5 Verifying Checksum 
+ e59838ecfec5 Download complete 
+ e59838ecfec5 Extracting [>                                                  ]  32.77kB/2.214MB
+ e59838ecfec5 Extracting [==================>                                ]  819.2kB/2.214MB
+ e59838ecfec5 Extracting [====================>                              ]  917.5kB/2.214MB
+ e59838ecfec5 Extracting [=======================================>           ]  1.737MB/2.214MB
+ e59838ecfec5 Extracting [==================================================>]  2.214MB/2.214MB
+ e59838ecfec5 Pull complete 
+ app Pulled 
+ Network prototype-template_default  Creating
+ Network prototype-template_default  Created
+ Container prototype-template-app-1  Creating
+ Container prototype-template-app-1  Created
+ Container prototype-template-app-1  Starting
+ Container prototype-template-app-1  Started
+make[1]: Leaving directory '/home/fitz/prototype-template'
+Running: docker-compose ps
+time="2025-12-27T02:42:52-05:00" level=warning msg="/home/fitz/prototype-template/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion"
+NAME                       IMAGE            COMMAND                  SERVICE   CREATED        STATUS                  PORTS
+prototype-template-app-1   busybox:latest   "sh -c 'echo 'App se…"   app       1 second ago   Up Less than a second   
+Running: make test
+make[1]: Entering directory '/home/fitz/prototype-template'
+Test placeholder: use 'docker-compose run --rm app <test-command>' to run your suite.
+make[1]: Leaving directory '/home/fitz/prototype-template'
+Running: make demo
+make[1]: Entering directory '/home/fitz/prototype-template'
+Demo placeholder: use 'docker-compose run --rm app <demo-command>' to showcase the app.
+make[1]: Leaving directory '/home/fitz/prototype-template'
+Running: docker-compose down
+time="2025-12-27T02:42:52-05:00" level=warning msg="/home/fitz/prototype-template/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion"
+ Container prototype-template-app-1  Stopping
+ Container prototype-template-app-1  Stopped
+ Container prototype-template-app-1  Removing
+ Container prototype-template-app-1  Removed
+ Network prototype-template_default  Removing
+ Network prototype-template_default  Removed
