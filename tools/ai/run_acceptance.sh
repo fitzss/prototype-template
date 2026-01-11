@@ -4,13 +4,14 @@ set -euo pipefail
 usage() {
   cat <<'USAGE'
 Usage:
-  tools/ai/run_acceptance.sh [--dry-run] [--report-dir DIR] [--step-timeout-seconds N] [SPEC_PATH]
+  tools/ai/run_acceptance.sh [--dry-run] [--report-dir DIR] [--step-timeout-seconds N] [--no-lint|--lint-only] [SPEC_PATH]
 
 Behavior:
   - Finds the "Acceptance checks" section (case-insensitive) in SPEC markdown.
   - Extracts fenced code blocks (```bash / ```sh / ```).
   - Discovers runnable commands (non-empty, non-comment lines).
   - --dry-run prints discovered commands and exits 0 if any exist.
+  - --lint-only runs spec linting and exits without executing commands.
   - Executes acceptance commands sequentially; fails on first failing command.
 
 Reporting:
@@ -20,15 +21,20 @@ Reporting:
 
 Notes:
   - --step-timeout-seconds defaults to 180; enforced only if 'timeout' exists.
+  - Linting runs before execution; disable with --no-lint.
   - Fences may be indented (e.g., inside bullet lists); this runner still detects them.
   - If a fence is opened but never closed, this runner exits with a clear error.
 USAGE
 }
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 DRY_RUN=0
 REPORT_DIR=""
 SPEC="SPEC.md"
 STEP_TIMEOUT_SECONDS=180
+RUN_LINT=1
+LINT_ONLY=0
 
 section_tmp=""
 blocks_dir=""
@@ -76,6 +82,15 @@ while [[ $# -gt 0 ]]; do
       STEP_TIMEOUT_SECONDS="$2"
       shift 2
       ;;
+    --no-lint)
+      RUN_LINT=0
+      shift
+      ;;
+    --lint-only)
+      RUN_LINT=1
+      LINT_ONLY=1
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -90,6 +105,13 @@ done
 if [[ ! -f "$SPEC" ]]; then
   echo "Error: Spec file not found: $SPEC" >&2
   exit 2
+fi
+
+if [[ $RUN_LINT -eq 1 ]]; then
+  "$SCRIPT_DIR/spec_lint.sh" "$SPEC"
+  if [[ $LINT_ONLY -eq 1 ]]; then
+    exit 0
+  fi
 fi
 
 # Extract "Acceptance checks" section (case-insensitive) until next '## ' heading or EOF.
