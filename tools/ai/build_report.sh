@@ -68,7 +68,16 @@ if ! "$SCRIPT_DIR/run_acceptance.sh" --report-dir "$REPORT_DIR" "$SPEC_PATH"; th
   ACCEPTANCE_STATUS=$?
 fi
 
+RUN_DIR=""
 RESULT_JSON="$REPORT_DIR/result.json"
+if [ -f "$REPORT_DIR/latest_run" ]; then
+  RUN_ID=$(cat "$REPORT_DIR/latest_run")
+  if [ -n "$RUN_ID" ] && [ -d "$REPORT_DIR/$RUN_ID" ]; then
+    RUN_DIR="$REPORT_DIR/$RUN_ID"
+    RESULT_JSON="$RUN_DIR/result.json"
+  fi
+fi
+
 SUMMARY_STATUS="UNKNOWN"
 FAILED_COMMAND_TEXT=""
 if [ -f "$RESULT_JSON" ]; then

@@ -7,3 +7,5 @@ dist/
 build/
 target/
 .DS_Store
+build_reports/
+!build_reports/.gitkeep
