@@ -1,0 +1,65 @@
+name: Acceptance
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Make scripts executable
+        run: |
+          chmod +x tools/ai/run_acceptance.sh
+          chmod +x tools/ai/spec_lint.sh || true
+
+      - name: Run acceptance (do not stop workflow)
+        continue-on-error: true
+        run: |
+          rm -rf build_reports && mkdir -p build_reports
+          ./tools/ai/run_acceptance.sh --report-dir build_reports SPEC.md
+
+      - name: Job summary
+        if: always()
+        run: |
+          RID="$(cat build_reports/latest_run 2>/dev/null || true)"
+          RESULT="build_reports/$RID/result.json"
+          {
+            echo "### Acceptance Result"
+            if [[ -z "$RID" ]]; then
+              echo "- No latest_run found"
+              exit 0
+            fi
+            echo "- Run ID: `$RID`"
+            echo "- result.json: `$RESULT`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+import json, os
+rid_path = "build_reports/latest_run"
+rid = open(rid_path).read().strip() if os.path.exists(rid_path) else ""
+result = f"build_reports/{rid}/result.json" if rid else ""
+if not rid:
+    raise SystemExit(0)
+if not os.path.exists(result):
+    print("- result.json missing")
+    raise SystemExit(0)
+data = json.load(open(result))
+status = data.get("status") or ("PASS" if data.get("pass") else "FAIL")
+print(f"- Status: **{status}**")
+fs = data.get("failing_step", "")
+fc = data.get("failing_command", "")
+if fs:
+    print(f"- failing_step: `{fs}`")
+if fc:
+    print(f"- failing_command: `{fc}`")
+PY
+
+      - name: Upload proof packet
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: proof-packet
+          path: build_reports/
