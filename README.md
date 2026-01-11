@@ -63,6 +63,8 @@ make acceptance
 ./tools/ai/run_acceptance.sh SPEC.md
 \`\`\`
 
+The `## Acceptance Checks` heading is matched case-insensitively, so specs that use `Checks`, `checks`, or `CHECKS` are treated the same. Keeping fences at the top level makes specs easier to scan, but indented fences (for example inside bullet lists) are still supported by the runner, which strips the shared indentation before execution.
+
 ### Acceptance directives
 Inside each acceptance code block you can add directive lines starting with `#@` to control execution. Everything is deterministic by default, but flaky commands can opt into retries, timeouts, exit-code overrides, and regex assertions:
 
