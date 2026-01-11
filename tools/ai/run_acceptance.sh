@@ -83,6 +83,16 @@ RESULT_FAILING_COMMAND=""
 RESULT_WRITTEN=0
 LAST_COMMAND=""
 LAST_STEP=0
+CURRENT_STEP_IDX=0
+CURRENT_STEP_COMMAND=""
+CURRENT_CMD_PATH=""
+CURRENT_STDOUT_PATH=""
+CURRENT_STDERR_PATH=""
+CURRENT_STEP_STARTED=0
+CURRENT_STEP_FINALIZED=0
+CURRENT_STEP_START_MS=0
+CURRENT_STEP_ARRAY_INDEX=-1
+TERMINATED_BY_SIGNAL=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -441,6 +451,35 @@ write_result_json() {
 on_exit() {
   local exit_status=$?
   trap - EXIT
+  if [[ $CURRENT_STEP_STARTED -eq 1 && $CURRENT_STEP_FINALIZED -eq 0 ]]; then
+    local idx=$CURRENT_STEP_ARRAY_INDEX
+    if (( idx >= 0 )); then
+      local inferred_exit=$exit_status
+      if [[ "$TERMINATED_BY_SIGNAL" == "TERM" ]]; then
+        inferred_exit=143
+      elif [[ "$TERMINATED_BY_SIGNAL" == "INT" ]]; then
+        inferred_exit=130
+      elif [[ $inferred_exit -eq 0 ]]; then
+        inferred_exit=1
+      fi
+      STEP_STATUSES[$idx]="fail"
+      STEP_EXIT_CODES[$idx]="$inferred_exit"
+      local now=$(now_ms)
+      local duration=0
+      if [[ $CURRENT_STEP_START_MS -gt 0 ]]; then
+        duration=$((now - CURRENT_STEP_START_MS))
+      fi
+      STEP_DURATIONS[$idx]="$duration"
+      if [[ -z "$RESULT_FAILING_STEP" ]]; then
+        RESULT_FAILING_STEP="$CURRENT_STEP_IDX"
+      fi
+      if [[ -z "$RESULT_FAILING_COMMAND" ]]; then
+        RESULT_FAILING_COMMAND="$CURRENT_STEP_COMMAND"
+      fi
+    fi
+    RESULT_PASS=false
+    RESULT_EXIT_CODE=${STEP_EXIT_CODES[$CURRENT_STEP_ARRAY_INDEX]:-$exit_status}
+  fi
   if [[ "$RESULT_PASS" == "true" && $exit_status -ne 0 ]]; then
     RESULT_PASS=false
     RESULT_EXIT_CODE=$exit_status
@@ -458,12 +497,28 @@ on_exit() {
   exit $exit_status
 }
 
+on_term() {
+  TERMINATED_BY_SIGNAL="TERM"
+  exit 143
+}
+
+on_int() {
+  TERMINATED_BY_SIGNAL="INT"
+  exit 130
+}
+
 trap on_exit EXIT
+trap on_term TERM
+trap on_int INT
 
 step_idx=0
 
 for cmd in "${COMMANDS[@]}"; do
   step_idx=$((step_idx + 1))
+  CURRENT_STEP_IDX="$step_idx"
+  CURRENT_STEP_COMMAND="$cmd"
+  CURRENT_STEP_STARTED=0
+  CURRENT_STEP_FINALIZED=0
   echo "running step $step_idx: $cmd"
   LAST_COMMAND="$cmd"
   LAST_STEP="$step_idx"
@@ -477,7 +532,28 @@ for cmd in "${COMMANDS[@]}"; do
     stdout_path="$STEPS_DIR/${local_label}.stdout.log"
     stderr_path="$STEPS_DIR/${local_label}.stderr.log"
     printf '%s\n' "$cmd" > "$cmd_path"
+    : > "$stdout_path"
+    : > "$stderr_path"
   fi
+
+  CURRENT_CMD_PATH="$cmd_path"
+  CURRENT_STDOUT_PATH="$stdout_path"
+  CURRENT_STDERR_PATH="$stderr_path"
+  CURRENT_STEP_STARTED=1
+
+  rel_cmd_path="$(rel_path_for_json "$cmd_path")"
+  rel_stdout_path="$(rel_path_for_json "$stdout_path")"
+  rel_stderr_path="$(rel_path_for_json "$stderr_path")"
+
+  STEP_INDEXES+=("$step_idx")
+  STEP_COMMANDS+=("$cmd")
+  STEP_STATUSES+=("fail")
+  STEP_EXIT_CODES+=(143)
+  STEP_DURATIONS+=(0)
+  STEP_CMD_PATHS+=("$rel_cmd_path")
+  STEP_STDOUT_PATHS+=("$rel_stdout_path")
+  STEP_STDERR_PATHS+=("$rel_stderr_path")
+  CURRENT_STEP_ARRAY_INDEX=$(( ${#STEP_INDEXES[@]} - 1 ))
 
   exe_name="$(extract_executable "$cmd")"
   policy_denied=0
@@ -491,13 +567,11 @@ for cmd in "${COMMANDS[@]}"; do
   rc=0
   duration_ms=0
   start_ms=$(now_ms)
+  CURRENT_STEP_START_MS="$start_ms"
 
   if [[ $policy_denied -eq 1 ]]; then
     rc=126
     status="policy_denied"
-    if [[ -n "$stdout_path" ]]; then
-      : > "$stdout_path"
-    fi
     if [[ -n "$stderr_path" ]]; then
       printf 'policy denied: %s\n' "$exe_name" > "$stderr_path"
     else
@@ -545,18 +619,14 @@ for cmd in "${COMMANDS[@]}"; do
     fi
   fi
 
-  rel_cmd_path="$(rel_path_for_json "$cmd_path")"
-  rel_stdout_path="$(rel_path_for_json "$stdout_path")"
-  rel_stderr_path="$(rel_path_for_json "$stderr_path")"
-
-  STEP_INDEXES+=("$step_idx")
-  STEP_COMMANDS+=("$cmd")
-  STEP_STATUSES+=("$status")
-  STEP_EXIT_CODES+=("$rc")
-  STEP_DURATIONS+=("$duration_ms")
-  STEP_CMD_PATHS+=("$rel_cmd_path")
-  STEP_STDOUT_PATHS+=("$rel_stdout_path")
-  STEP_STDERR_PATHS+=("$rel_stderr_path")
+  if (( CURRENT_STEP_ARRAY_INDEX >= 0 )); then
+    STEP_STATUSES[$CURRENT_STEP_ARRAY_INDEX]="$status"
+    STEP_EXIT_CODES[$CURRENT_STEP_ARRAY_INDEX]="$rc"
+    STEP_DURATIONS[$CURRENT_STEP_ARRAY_INDEX]="$duration_ms"
+  fi
+  CURRENT_STEP_FINALIZED=1
+  CURRENT_STEP_STARTED=0
+  CURRENT_STEP_START_MS=0
 
   if [[ "$status" != "pass" ]]; then
     RESULT_PASS=false
