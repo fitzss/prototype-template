@@ -4,7 +4,7 @@ set -euo pipefail
 usage() {
   cat <<'USAGE'
 Usage:
-  tools/ai/run_acceptance.sh [--dry-run] [--report-dir DIR] [--step-timeout-seconds N] [--no-lint|--lint-only] [SPEC_PATH]
+  tools/ai/run_acceptance.sh [--dry-run] [--report-dir DIR] [--step-timeout-seconds N] [--no-lint|--lint-only] [--policy-mode MODE] [--allow-exe NAME] [SPEC_PATH]
 
 Behavior:
   - Finds the "Acceptance checks" section (case-insensitive) in SPEC markdown.
@@ -12,6 +12,7 @@ Behavior:
   - Discovers runnable commands (non-empty, non-comment lines).
   - --dry-run prints discovered commands and exits 0 if any exist.
   - --lint-only runs spec linting and exits without executing commands.
+  - --policy-mode (allowlist|off) enforces executable gates; default allowlist.
   - Executes acceptance commands sequentially; fails on first failing command.
 
 Reporting:
@@ -22,6 +23,7 @@ Reporting:
 Notes:
   - --step-timeout-seconds defaults to 180; enforced only if 'timeout' exists.
   - Linting runs before execution; disable with --no-lint.
+  - Built-in allowlist permits: make, docker-compose, cat, bash, sh, python, curl, echo.
   - Fences may be indented (e.g., inside bullet lists); this runner still detects them.
   - If a fence is opened but never closed, this runner exits with a clear error.
 USAGE
@@ -35,11 +37,37 @@ SPEC="SPEC.md"
 STEP_TIMEOUT_SECONDS=180
 RUN_LINT=1
 LINT_ONLY=0
+POLICY_MODE="allowlist"
+POLICY_ALLOWLIST=(make docker-compose cat bash sh python curl echo)
 
 section_tmp=""
 blocks_dir=""
 block_tmp=""
 discover_tmp=""
+
+add_allow_exe() {
+  local exe="$1"
+  POLICY_ALLOWLIST+=("$exe")
+}
+
+is_exe_allowed() {
+  local exe="$1"
+  for allowed in "${POLICY_ALLOWLIST[@]}"; do
+    if [[ "$exe" == "$allowed" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+extract_executable() {
+  local cmd="$1"
+  if [[ -z "$cmd" ]]; then
+    printf ''
+    return
+  fi
+  printf '%s\n' "$cmd" | awk 'NR==1 { print $1; exit }'
+}
 
 cleanup_tmp_files() {
   [[ -n "$section_tmp" ]] && rm -f "$section_tmp"
@@ -89,6 +117,43 @@ while [[ $# -gt 0 ]]; do
     --lint-only)
       RUN_LINT=1
       LINT_ONLY=1
+      shift
+      ;;
+    --policy-mode)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: --policy-mode requires a value" >&2
+        exit 2
+      fi
+      case "$2" in
+        allowlist|off)
+          POLICY_MODE="$2"
+          ;;
+        *)
+          echo "Error: --policy-mode must be 'allowlist' or 'off'" >&2
+          exit 2
+          ;;
+      esac
+      shift 2
+      ;;
+    --allow-exe)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: --allow-exe requires an executable name" >&2
+        exit 2
+      fi
+      add_allow_exe "$2"
+      shift 2
+      ;;
+    --policy-mode=*)
+      policy_value="${1#*=}"
+      case "$policy_value" in
+        allowlist|off)
+          POLICY_MODE="$policy_value"
+          ;;
+        *)
+          echo "Error: --policy-mode must be 'allowlist' or 'off'" >&2
+          exit 2
+          ;;
+      esac
       shift
       ;;
     -h|--help)
@@ -414,45 +479,69 @@ for cmd in "${COMMANDS[@]}"; do
     printf '%s\n' "$cmd" > "$cmd_path"
   fi
 
-  script_tmp="$(mktemp)"
-  {
-    echo '#!/usr/bin/env bash'
-    echo 'set -Eeuo pipefail'
-    printf '%s\n' "$cmd"
-  } > "$script_tmp"
-  chmod +x "$script_tmp"
-
-  start_ms=$(now_ms)
-  if [[ -n "$stdout_path" ]]; then
-    set +e
-    if [[ $HAS_TIMEOUT -eq 1 ]]; then
-      timeout "$STEP_TIMEOUT_SECONDS" "$script_tmp" > >(tee "$stdout_path") 2> >(tee "$stderr_path" >&2)
-    else
-      "$script_tmp" > >(tee "$stdout_path") 2> >(tee "$stderr_path" >&2)
+  exe_name="$(extract_executable "$cmd")"
+  policy_denied=0
+  if [[ "$POLICY_MODE" == "allowlist" ]]; then
+    if [[ -z "$exe_name" ]] || ! is_exe_allowed "$exe_name"; then
+      policy_denied=1
     fi
-    rc=${PIPESTATUS[0]}
-    set -e
-  else
-    set +e
-    if [[ $HAS_TIMEOUT -eq 1 ]]; then
-      timeout "$STEP_TIMEOUT_SECONDS" "$script_tmp"
-    else
-      "$script_tmp"
-    fi
-    rc=$?
-    set -e
   fi
-  end_ms=$(now_ms)
-  duration_ms=$((end_ms - start_ms))
-  rm -f "$script_tmp"
 
-  # status may be pass/fail/timeout; policy_denied reserved for future enforcement.
   status="pass"
-  if [[ $rc -ne 0 ]]; then
-    if [[ $HAS_TIMEOUT -eq 1 && $rc -eq 124 ]]; then
-      status="timeout"
+  rc=0
+  duration_ms=0
+  start_ms=$(now_ms)
+
+  if [[ $policy_denied -eq 1 ]]; then
+    rc=126
+    status="policy_denied"
+    if [[ -n "$stdout_path" ]]; then
+      : > "$stdout_path"
+    fi
+    if [[ -n "$stderr_path" ]]; then
+      printf 'policy denied: %s\n' "$exe_name" > "$stderr_path"
     else
-      status="fail"
+      printf 'policy denied: %s\n' "$exe_name" >&2
+    fi
+    end_ms=$start_ms
+  else
+    script_tmp="$(mktemp)"
+    {
+      echo '#!/usr/bin/env bash'
+      echo 'set -Eeuo pipefail'
+      printf '%s\n' "$cmd"
+    } > "$script_tmp"
+    chmod +x "$script_tmp"
+
+    if [[ -n "$stdout_path" ]]; then
+      set +e
+      if [[ $HAS_TIMEOUT -eq 1 ]]; then
+        timeout "$STEP_TIMEOUT_SECONDS" "$script_tmp" > >(tee "$stdout_path") 2> >(tee "$stderr_path" >&2)
+      else
+        "$script_tmp" > >(tee "$stdout_path") 2> >(tee "$stderr_path" >&2)
+      fi
+      rc=${PIPESTATUS[0]}
+      set -e
+    else
+      set +e
+      if [[ $HAS_TIMEOUT -eq 1 ]]; then
+        timeout "$STEP_TIMEOUT_SECONDS" "$script_tmp"
+      else
+        "$script_tmp"
+      fi
+      rc=$?
+      set -e
+    fi
+    end_ms=$(now_ms)
+    duration_ms=$((end_ms - start_ms))
+    rm -f "$script_tmp"
+
+    if [[ $rc -ne 0 ]]; then
+      if [[ $HAS_TIMEOUT -eq 1 && $rc -eq 124 ]]; then
+        status="timeout"
+      else
+        status="fail"
+      fi
     fi
   fi
 
@@ -469,12 +558,16 @@ for cmd in "${COMMANDS[@]}"; do
   STEP_STDOUT_PATHS+=("$rel_stdout_path")
   STEP_STDERR_PATHS+=("$rel_stderr_path")
 
-  if [[ $rc -ne 0 ]]; then
+  if [[ "$status" != "pass" ]]; then
     RESULT_PASS=false
     RESULT_EXIT_CODE=$rc
     RESULT_FAILING_STEP="$step_idx"
     RESULT_FAILING_COMMAND="$cmd"
-    echo "step $step_idx failed: $cmd (exit $rc)" >&2
+    if [[ "$status" == "policy_denied" ]]; then
+      echo "step $step_idx blocked by policy: $cmd" >&2
+    else
+      echo "step $step_idx failed: $cmd (exit $rc)" >&2
+    fi
     if [[ -n "$stdout_path" ]]; then
       echo "Logs: STDOUT=$stdout_path STDERR=$stderr_path" >&2
     fi
