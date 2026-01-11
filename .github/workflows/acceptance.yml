@@ -50,7 +50,7 @@ data = json.load(open(result))
 status = data.get("status") or ("PASS" if data.get("pass") else "FAIL")
 print(f"- Status: **{status}**")
 fs = data.get("failing_step", "")
-fc = data.get("failing_command", "")
+fc = data.get("failing_command") or data.get("failed_command", "")
 if fs:
     print(f"- failing_step: `{fs}`")
 if fc:

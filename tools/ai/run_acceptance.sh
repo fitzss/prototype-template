@@ -407,7 +407,6 @@ write_result_json() {
     printf '  "spec_path": "%s",\n' "$(json_escape "$SPEC")"
     printf '  "failing_step": %s,\n' "$failing_step_json"
     printf '  "failing_command": %s,\n' "$failing_command_json"
-    printf '  "failed_command": %s,\n' "$failing_command_json"
     printf '  "steps": [\n'
     local total=${#STEP_INDEXES[@]}
     for ((i = 0; i < total; i++)); do

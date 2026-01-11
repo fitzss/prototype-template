@@ -85,7 +85,7 @@ if [ -f "$RESULT_JSON" ]; then
   if [ -n "$STATUS_VALUE" ]; then
     SUMMARY_STATUS=${STATUS_VALUE^^}
   fi
-  FAILED_RAW=$(sed -n 's/.*"failed_command":\(null\|".*"\).*/\1/p' "$RESULT_JSON")
+  FAILED_RAW=$(sed -n 's/.*"failing_command":\(null\|".*"\).*/\1/p' "$RESULT_JSON")
   if [ -n "$FAILED_RAW" ] && [ "$FAILED_RAW" != "null" ]; then
     FAILED_TRIM="${FAILED_RAW#\"}"
     FAILED_TRIM="${FAILED_TRIM%\"}"
